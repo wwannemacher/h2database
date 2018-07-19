@@ -1850,8 +1850,9 @@ public class MVStore {
         int length = c.len * BLOCK_SIZE;
         buff.limit(length);
         ByteBuffer readBuff = fileStore.readFully(start, length);
+        int startPos = readBuff.position();
         Chunk.readChunkHeader(readBuff, start);
-        int chunkHeaderLen = readBuff.position();
+        int chunkHeaderLen = readBuff.position() - startPos;
         buff.position(chunkHeaderLen);
         buff.put(readBuff);
         long pos = allocateFileSpace(length, toTheEnd);
@@ -2571,6 +2572,30 @@ public class MVStore {
                     "A map named {0} already exists", newName);
             // at first create a new name as an "alias"
             meta.put("name." + newName, idHexStr);
+            // switch roles of a new and old names - old one is an alias now
+            meta.put(MVMap.getMapKey(id), map.asString(newName));
+            // get rid of the old name completely
+            meta.remove("name." + oldName);
+            markMetaChanged();
+        }
+    }
+
+    public void renameMap2(MVMap<?, ?> map, String newName) {
+        checkOpen();
+        DataUtils.checkArgument(map != meta,
+                "Renaming the meta map is not allowed");
+        int id = map.getId();
+        String oldName = getMapName(id);
+        if (oldName != null && !oldName.equals(newName)) {
+            String idHexStr = Integer.toHexString(id);
+            // we need to cope with the case of previously unfinished rename
+            String existingIdHexStr = meta.get("name." + newName);
+            DataUtils.checkArgument(
+                    existingIdHexStr == null || existingIdHexStr.equals(idHexStr),
+                    "A map named {0} already exists", newName);
+            // at first create a new name as an "alias"
+            meta.put("name." + newName, idHexStr);
+            try { Thread.sleep(1); } catch (InterruptedException ignore) {}
             // switch roles of a new and old names - old one is an alias now
             meta.put(MVMap.getMapKey(id), map.asString(newName));
             // get rid of the old name completely

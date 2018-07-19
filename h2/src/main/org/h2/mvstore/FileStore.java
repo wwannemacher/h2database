@@ -6,11 +6,16 @@
 package org.h2.mvstore;
 
 import java.io.IOException;
+import java.lang.ref.WeakReference;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import org.h2.engine.SysProperties;
 import org.h2.mvstore.cache.FilePathCache;
 import org.h2.store.fs.FilePath;
 import org.h2.store.fs.FilePathDisk;
@@ -77,6 +82,11 @@ public class FileStore {
     private FileChannel encryptedFile;
 
     /**
+     * Mapped buffer, if available
+     */
+    private MappedByteBuffer mapped;
+
+    /**
      * The file lock.
      */
     private FileLock fileLock;
@@ -94,10 +104,18 @@ public class FileStore {
      * @return the byte buffer
      */
     public ByteBuffer readFully(long pos, int len) {
-        ByteBuffer dst = ByteBuffer.allocate(len);
-        DataUtils.readFully(file, pos, dst);
         readCount.incrementAndGet();
         readBytes.addAndGet(len);
+        if (mapped != null) {
+            long limit = pos + len;
+            if (limit <= Integer.MAX_VALUE) {
+                ByteBuffer duplicate = mapped.duplicate();
+                duplicate.position((int)pos).limit((int)limit);
+                return duplicate.asReadOnlyBuffer();
+            }
+        }
+        ByteBuffer dst = ByteBuffer.allocate(len);
+        DataUtils.readFully(file, pos, dst);
         return dst;
     }
 
@@ -109,7 +127,8 @@ public class FileStore {
      */
     public void writeFully(long pos, ByteBuffer src) {
         int len = src.remaining();
-        fileSize = Math.max(fileSize, pos + len);
+        long limit = pos + len;
+        fileSize = Math.max(fileSize, limit);
         DataUtils.writeFully(file, pos, src);
         writeCount.incrementAndGet();
         writeBytes.addAndGet(len);
@@ -173,6 +192,10 @@ public class FileStore {
                         "The file is locked: {0}", fileName);
             }
             fileSize = file.size();
+            try {
+                mapped = file.map(FileChannel.MapMode.READ_ONLY, 0, Integer.MAX_VALUE);
+                file.truncate(fileSize);
+            } catch (Exception ignore) { /**/}
         } catch (IOException e) {
             throw DataUtils.newIllegalStateException(
                     DataUtils.ERROR_READING_FAILED,
@@ -185,6 +208,9 @@ public class FileStore {
      */
     public void close() {
         try {
+            if (mapped != null) {
+                unMap();
+            }
             if (fileLock != null) {
                 fileLock.release();
                 fileLock = null;
@@ -197,6 +223,49 @@ public class FileStore {
                     "Closing failed for file {0}", fileName, e);
         } finally {
             file = null;
+        }
+    }
+
+    private static final long GC_TIMEOUT_MS = 10_000;
+
+    private void unMap() {
+        if (mapped == null) {
+            return;
+        }
+
+        // need to dispose old direct buffer, see bug
+        // http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4724038
+
+        boolean useSystemGc = true;
+        if (SysProperties.NIO_CLEANER_HACK) {
+            try {
+                Method cleanerMethod = mapped.getClass().getMethod("cleaner");
+                cleanerMethod.setAccessible(true);
+                Object cleaner = cleanerMethod.invoke(mapped);
+                if (cleaner != null) {
+                    Method clearMethod = cleaner.getClass().getMethod("clean");
+                    clearMethod.invoke(cleaner);
+                }
+                useSystemGc = false;
+            } catch (Throwable e) {
+                // useSystemGc is already true
+            } finally {
+                mapped = null;
+            }
+        }
+        if (useSystemGc) {
+            WeakReference<MappedByteBuffer> bufferWeakRef =
+                    new WeakReference<>(mapped);
+            mapped = null;
+            long start = System.nanoTime();
+            while (bufferWeakRef.get() != null) {
+                if (System.nanoTime() - start > TimeUnit.MILLISECONDS.toNanos(GC_TIMEOUT_MS)) {
+                    throw DataUtils.newIllegalStateException(DataUtils.ERROR_INTERNAL,
+                            "Timeout (" + GC_TIMEOUT_MS + " ms) reached while trying to GC mapped buffer");
+                }
+                System.gc();
+                Thread.yield();
+            }
         }
     }
 

@@ -8,6 +8,7 @@ package org.h2.store.fs;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.NonWritableChannelException;
@@ -119,6 +120,11 @@ class FileNio extends FileBase {
     public synchronized FileLock tryLock(long position, long size,
             boolean shared) throws IOException {
         return channel.tryLock(position, size, shared);
+    }
+
+    @Override
+    public MappedByteBuffer map(MapMode mode, long position, long size) throws IOException {
+        return channel.map(mode, position, size);
     }
 
     @Override
