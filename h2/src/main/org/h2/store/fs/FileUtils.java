@@ -195,6 +195,15 @@ public class FileUtils {
     }
 
     /**
+     * Checks whether the given path points to a symbolic link
+     *
+     * @return whether this is a symbolic link
+     */
+    public static boolean isSymbolicLink(String fileName) {
+        return FilePath.get(fileName).isSymbolicLink();
+    }
+
+    /**
      * Open a random access file object.
      * This method is similar to Java 7
      * <code>java.nio.channels.FileChannel.open</code>.

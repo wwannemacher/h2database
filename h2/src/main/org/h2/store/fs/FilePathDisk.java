@@ -223,6 +223,29 @@ public class FilePathDisk extends FilePath {
         return new File(name).lastModified();
     }
 
+    @Override
+    public boolean isSymbolicLink() {
+        File it = new File(name);
+        File canon;
+        if (it.getParent() == null) {
+            canon = it;
+        }
+        else {
+            try {
+                File canonDir = it.getParentFile().getCanonicalFile();
+                canon = new File(canonDir, it.getName());
+            } catch (IOException e) {
+                throw DbException.convertIOException(e, name);
+            }
+        }
+
+        try {
+            return !canon.getCanonicalFile().equals(canon.getAbsoluteFile());
+        } catch (IOException e) {
+            throw DbException.convertIOException(e, name);
+        }
+    }
+
     private static boolean canWriteInternal(File file) {
         try {
             if (!file.canWrite()) {

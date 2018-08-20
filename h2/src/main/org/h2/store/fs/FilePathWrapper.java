@@ -11,6 +11,8 @@ import java.io.OutputStream;
 import java.nio.channels.FileChannel;
 import java.util.List;
 
+import org.h2.message.DbException;
+
 /**
  * The base class for wrapping / delegating file systems such as
  * the split file system.
@@ -106,6 +108,11 @@ public abstract class FilePathWrapper extends FilePath {
     @Override
     public boolean isDirectory() {
         return base.isDirectory();
+    }
+
+    @Override
+    public boolean isSymbolicLink() {
+        throw new UnsupportedOperationException();
     }
 
     @Override

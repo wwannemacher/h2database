@@ -197,6 +197,13 @@ public abstract class FilePath {
     public abstract boolean canWrite();
 
     /**
+     * Check if the file is a symbolic link.
+     *
+     * @return if the file is a symbolic link
+     */
+    public abstract boolean isSymbolicLink();
+
+    /**
      * Create a directory (all required parent directories already exist).
      */
     public abstract void createDirectory();

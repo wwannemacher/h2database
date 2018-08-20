@@ -229,6 +229,16 @@ public class FilePathNioMem extends FilePath {
         return false;
     }
 
+    /**
+     * Cannot be a symbolic link if the file is only in-mem
+     *
+     * @return whether this is a symbolic link
+     */
+    @Override
+    public boolean isSymbolicLink() {
+        return false;
+    }
+
 }
 
 /**

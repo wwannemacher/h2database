@@ -149,6 +149,9 @@ public class Backup extends Tool {
                     if (FileUtils.isDirectory(fileName)) {
                         continue;
                     }
+                    if (FileUtils.isSymbolicLink(fileName)) {
+                        continue;
+                    }
                     f = f.substring(base.length());
                     f = BackupCommand.correctFileName(f);
                     ZipEntry entry = new ZipEntry(f);

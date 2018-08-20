@@ -315,6 +315,10 @@ public class FilePathZip2 extends FilePath {
         return "zip2";
     }
 
+    @Override
+    public boolean isSymbolicLink() {
+        throw new UnsupportedOperationException();
+    }
 }
 
 /**
